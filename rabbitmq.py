@@ -26,7 +26,8 @@ PLUGIN_CONFIG = {
     'password': 'guest',
     'host': 'localhost',
     'port': 15672,
-    'realm': 'RabbitMQ Management'
+    'realm': 'RabbitMQ Management',
+    'hostname_in_queue_metrics': False,
 }
 
 
@@ -57,6 +58,9 @@ def configure(config_values):
                 for regex in config_value.children:
                     PLUGIN_CONFIG['ignore'][type_rmq].append(
                         re.compile(regex.values[0]))
+            elif config_value.key == 'Hostname_in_queue_metrics':
+                PLUGIN_CONFIG['hostname_in_queue_metrics'] = "true" == config_value.values[0].lower()
+
 
 
 def init():
@@ -146,7 +150,11 @@ def dispatch_queue_metrics(queue, vhost):
         values = list()
         for detail in MESSAGE_DETAIL:
             values.append(details.get(detail, 0))
-        dispatch_values(values, vhost_name, 'queues', queue['name'],
+        if PLUGIN_CONFIG['hostname_in_queue_metrics']:
+             dispatch_values(values, PLUGIN_CONFIG['host'], vhost_name + '_queues', queue['name'],
+                        'rabbitmq_details', name)
+        else:
+            dispatch_values(values, vhost_name, 'queues', queue['name'],
                         'rabbitmq_details', name)
 
     dispatch_message_stats(queue.get('message_stats', None), vhost_name,
@@ -158,8 +166,13 @@ def dispatch_exchange_metrics(exchange, vhost):
     Dispatches exchange metrics for exchange in vhost
     '''
     vhost_name = 'rabbitmq_%s' % vhost['name'].replace('/', 'default')
-    dispatch_message_stats(exchange.get('message_stats', None), vhost_name,
-                           'exchanges', exchange['name'])
+    if PLUGIN_CONFIG['hostname_in_queue_metrics']:
+         dispatch_message_stats(exchange.get('message_stats', None), PLUGIN_CONFIG['host'],
+                       'exchanges', exchange['name'])
+    else:
+        dispatch_message_stats(exchange.get('message_stats', None), vhost_name,
+                       'exchanges', exchange['name'])
+
 
 
 def dispatch_node_metrics(node):
