@@ -87,7 +87,7 @@ def get_info(url):
 
 
 def dispatch_values(values, host, plugin, plugin_instance, metric_type,
-                    type_instance=None):
+                    type_instance=None, hostname_in_q_metrics=False):
     '''
     dispatch metrics to collectd
     Args:
@@ -103,9 +103,13 @@ def dispatch_values(values, host, plugin, plugin_instance, metric_type,
                    plugin_instance, metric_type, type_instance, values))
 
     metric = collectd.Values()
-    if host:
-        metric.host = host
-    metric.plugin = plugin
+    if hostname_in_q_metrics:
+        metric.host = PLUGIN_CONFIG['host']
+        metric.plugin = "%s_%s" % (host, plugin)
+    else:
+        if host:
+            metric.host = host
+        metric.plugin = plugin
     if plugin_instance:
         metric.plugin_instance = plugin_instance
     metric.type = metric_type
@@ -115,7 +119,7 @@ def dispatch_values(values, host, plugin, plugin_instance, metric_type,
     metric.dispatch()
 
 
-def dispatch_message_stats(data, vhost, plugin, plugin_instance):
+def dispatch_message_stats(data, vhost, plugin, plugin_instance, hostname_in_q_metrics=False):
     """
     Sends message stats to collectd.
     """
@@ -125,7 +129,7 @@ def dispatch_message_stats(data, vhost, plugin, plugin_instance):
 
     for name in MESSAGE_STATS:
         dispatch_values((data.get(name, 0),), vhost, plugin,
-                        plugin_instance, name)
+                        plugin_instance, name, hostname_in_q_metrics=hostname_in_q_metrics)
 
 
 def dispatch_queue_metrics(queue, vhost):
@@ -137,28 +141,24 @@ def dispatch_queue_metrics(queue, vhost):
     for name in QUEUE_STATS:
         values = list((queue.get(name, 0),))
         dispatch_values(values, vhost_name, 'queues', queue['name'],
-                        'rabbitmq_%s' % name)
+                        'rabbitmq_%s' % name, hostname_in_q_metrics=PLUGIN_CONFIG['hostname_in_queue_metrics'])
 
     for name in QUEUE_MESSAGE_STATS:
         values = list((queue.get(name, 0),))
         dispatch_values(values, vhost_name, 'queues', queue['name'],
-                        'rabbitmq_%s' % name)
+                        'rabbitmq_%s' % name, hostname_in_q_metrics=PLUGIN_CONFIG['hostname_in_queue_metrics'])
 
         details = queue.get("%s_details" % name, None)
         if not details:
             continue
-        values = list()
         for detail in MESSAGE_DETAIL:
-            values.append(details.get(detail, 0))
-        if PLUGIN_CONFIG['hostname_in_queue_metrics']:
-             dispatch_values(values, PLUGIN_CONFIG['host'], vhost_name + '_queues', queue['name'],
-                        'rabbitmq_details', name)
-        else:
-            dispatch_values(values, vhost_name, 'queues', queue['name'],
-                        'rabbitmq_details', name)
+            if detail in details:
+                dispatch_values([details[detail]], vhost_name, 'queues', queue['name'],
+                                'rabbitmq_details', "%s_%s" % (name, detail),
+                                hostname_in_q_metrics=PLUGIN_CONFIG['hostname_in_queue_metrics'])
 
     dispatch_message_stats(queue.get('message_stats', None), vhost_name,
-                           'queues', queue['name'])
+                           'queues', queue['name'], hostname_in_q_metrics=PLUGIN_CONFIG['hostname_in_queue_metrics'])
 
 
 def dispatch_exchange_metrics(exchange, vhost):
